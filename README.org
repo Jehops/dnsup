@@ -1,0 +1,49 @@
+* DNS Updater
+
+** SYNOPSIS
+   =$ dnsup [-h|-s]=
+
+** DESCRIPTION
+   Update a host's A record when its external IP address changes.  The update is
+   performed using your DNS provider's API.
+
+   Currently only GoDaddy's managed DNS service is supported.  Patches are
+   welcomed.
+
+#+BEGIN_EXAMPLE
+   -h    Print this help message.
+   -s    Be silent except upon error.
+#+END_EXAMPLE
+
+   The following variables are read from =/usr/local/etc/gddu.conf=.
+
+#+BEGIN_SRC sh
+provider=GoDaddy
+key=GoDaddy_API_key
+secret=GoDaddy_API_key_secret
+ttl=TTL
+#+END_SRC
+
+Go to https://developer.godaddy.com to get a GoDaddy API key.
+
+** COMPATIBILITY
+   dnsup is written in POSIX shell.  It requires curl with TLS support and a CA
+   certificate store.
+
+** EXAMPLE
+~$ cat /etc/crontab~
+#+BEGIN_SRC sh
+PATH=/etc:/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin
+SHELL=/bin/sh
+
+#minute	hour	mday	month	wday	who	command
+*/5     *       *       *       *       dnsup    dnsup >> /var/log/dnsup.log 2>&1
+@reboot                                 dnsup    dnsup >> /var/log/dnsup.log 2>&1
+#+END_SRC
+
+** AUTHOR
+   Joseph Mingrone <jrm@ftfl.ca>
+
+** LICENSE
+   dnsup is released under a BSD 2-Clause License.  Refer to the header of each
+   source file for details.
