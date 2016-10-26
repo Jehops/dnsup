@@ -116,7 +116,7 @@ domain=${fqdn#*.}
 host=${fqdn%%.*}
 ip=$(host myip.opendns.com resolver1.opendns.com | \
          awk '/^myip.opendns.com has address / {print $4}')
-ip_file="/var/db/dnsup_external_ip"
+ip_file="/var/db/dnsup_ip"
 ip_regex="\b((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}\
 (25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b"
 ls_ip=$(egrep "$ip_regex" "$ip_file" 2>/dev/null) # last sent IP
