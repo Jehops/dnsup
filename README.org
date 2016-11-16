@@ -15,7 +15,7 @@
    -s    Be silent except upon error.
 #+END_EXAMPLE
 
-   The following variables are read from =/usr/local/etc/gddu.conf=.
+   The following variables are read from =/usr/local/etc/dnsup.conf=.
 
 #+BEGIN_SRC sh
 provider=GoDaddy
