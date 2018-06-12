@@ -37,7 +37,7 @@ fatal () {
 }
 # ==============================================================================
 help () {
-    readonly version=0.1
+    readonly version=0.2
 
     cat <<EOF
 NAME
@@ -92,12 +92,13 @@ EOF
 godaddy () {
 
     resp=$(curl -L -s -XPUT \
+                -w %{http_code} \
                 -H "Authorization: sso-key ${key}:${secret}" \
                 -H "Content-type: application/json" \
-                -d "{\"data\":\"${ip}\",\"ttl\":${ttl}}" \
+                -d "[ {\"data\":\"${ip}\",\"ttl\":${ttl}} ]" \
                 "https://api.godaddy.com/v1/domains/${domain}/records/A/${host}")
 
-    [ "$resp" = "{}" ]
+    [ "$resp" = "200" ]
 }
 
 if [ $# -gt 1 ] || { [ $# -eq 1 ] && [ "$1" != '-s' ]; }; then
