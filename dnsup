@@ -37,7 +37,7 @@ fatal () {
 }
 # ==============================================================================
 help () {
-    readonly version=0.3
+    readonly version=0.3.1
 
     cat <<EOF
 NAME
@@ -50,20 +50,20 @@ DESCRIPTION
 Update a host's A record when its external IP address changes.  The update is
 performed using your DNS provider's API.
 
-Gandi's LiveDNS and GoDaddy's managed DNS service are supported.  Only IPv4
-addresses can be updated.  I no longer have any domains registered with Godaddy,
-so it has been years since I tesed with them.  Patches are welcomed.
+Gandi's LiveDNS and GoDaddy's managed DNS service are supported.  For now, only
+IPv4 addresses can be updated.  I no longer have any domains registered with
+Godaddy, so it has been years since I tesed with them.  Patches are welcomed.
 
    -h   Print this help message.
    -s   Be silent except upon error.
 
    The following variables are read from /usr/local/etc/dnsup.conf
 
-   Values require for both Gandi and Godaddy
+   Values required for both Gandi and Godaddy
 
    provider=<Gandi | GoDaddy>
    key=<Gandi API key | GoDaddy API key>
-   ttl=
+   ttl=<TTL in second>
 
    Additional values required when provider is Gandi
 
@@ -73,7 +73,7 @@ so it has been years since I tesed with them.  Patches are welcomed.
 
    Additional value required when provider is Godaddy
 
-   secret=
+   secret=<API key secret>
 
    API keys
 

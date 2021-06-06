@@ -7,9 +7,10 @@
    Update a host's A record when its external IP address changes.  The update is
    performed using your DNS provider's API.
 
-   Currently only GoDaddy's managed DNS service is supported.  Patches are
+   Gandi's LiveDNS and GoDaddy's managed DNS service are supported.  For now,
+   Only IPv4 addresses can be updated.  I no longer have any domains registered
+   with Godaddy, so it has been years since I tesed with them.  Patches are
    welcomed.
-
 #+BEGIN_EXAMPLE
    -h    Print this help message.
    -s    Be silent except upon error.
@@ -17,14 +18,32 @@
 
    The following variables are read from =/usr/local/etc/dnsup.conf=.
 
+   Values required for both Gandi and Godaddy
+
 #+BEGIN_SRC sh
-provider=GoDaddy
-key=GoDaddy_API_key
-secret=GoDaddy_API_key_secret
-ttl=TTL
+  provider=<Gandi | GoDaddy>
+  key=<Gandi API key | GoDaddy API key>
+  ttl=<TTL in seconds>
 #+END_SRC
 
-Go to https://developer.godaddy.com to get a GoDaddy API key.
+   Additional values required when provider is Gandi
+
+#+BEGIN_SRC sh
+  domain=
+  host=
+  record=
+#+END_SRC
+
+   Additional value required when provider is Godaddy
+
+#+BEGIN_SRC sh
+  secret=<API key secret>
+#+END_SRC
+
+** API Keys
+
+   Gandi: https://api.gandi.net/
+   GoDaddy: https://developer.godaddy.com
 
 ** COMPATIBILITY
    dnsup is written in POSIX shell.  It requires curl with TLS support and a CA
