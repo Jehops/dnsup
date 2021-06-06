@@ -37,7 +37,7 @@ fatal () {
 }
 # ==============================================================================
 help () {
-    readonly version=0.2
+    readonly version=0.3
 
     cat <<EOF
 NAME
@@ -50,20 +50,35 @@ DESCRIPTION
 Update a host's A record when its external IP address changes.  The update is
 performed using your DNS provider's API.
 
-Currently only GoDaddy's managed DNS service is supported.  Patches are
-welcomed.
+Gandi's LiveDNS and GoDaddy's managed DNS service are supported.  Only IPv4
+addresses can be updated.  I no longer have any domains registered with Godaddy,
+so it has been years since I tesed with them.  Patches are welcomed.
 
    -h   Print this help message.
    -s   Be silent except upon error.
 
    The following variables are read from /usr/local/etc/dnsup.conf
 
-   provider=GoDaddy
-   key=GoDaddy_API_key
-   secret=GoDaddy_API_key_secret
-   ttl=TTL
+   Values require for both Gandi and Godaddy
 
-   Go to https://developer.godaddy.com to get a GoDaddy API key.
+   provider=<Gandi | GoDaddy>
+   key=<Gandi API key | GoDaddy API key>
+   ttl=
+
+   Additional values required when provider is Gandi
+
+   domain=
+   host=
+   record=
+
+   Additional value required when provider is Godaddy
+
+   secret=
+
+   API keys
+
+   Gandi: https://api.gandi.net/
+   GoDaddy: https://developer.godaddy.com
 
 COMPATIBILITY
    ${0##*/} is written in POSIX shell.  It requires curl with TLS support and a
@@ -89,10 +104,24 @@ EOF
     exit 0
 }
 # ==============================================================================
+gandi () {
+
+    api='https://dns.api.gandi.net/api/v5/'
+
+    resp=$(curl -L -s -XPUT \
+                -d '{"rrset_values": ["'"$ipv4"'"]}' \
+                -H "X-Api-Key: $key" \
+                -H "Content-type: application/json" \
+                "${api}domains/$domain/records/$record/A")
+
+    [ "$resp" = '{"message": "DNS Record Created"}' ]
+}
+
+
 godaddy () {
 
     resp=$(curl -L -s -XPUT \
-                -w %{http_code} \
+                -w '%{http_code}' \
                 -H "Authorization: sso-key ${key}:${secret}" \
                 -H "Content-type: application/json" \
                 -d "[ {\"data\":\"${ip}\",\"ttl\":${ttl}} ]" \
@@ -115,21 +144,26 @@ date=$(date)
 fqdn=$(hostname)
 domain=${fqdn#*.}
 host=${fqdn%%.*}
-ip=$(host myip.opendns.com resolver1.opendns.com | \
-         awk '/^myip.opendns.com has address / {print $4}')
-ip_file="/var/db/dnsup_ip"
-ip_regex="\b((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}\
+ip_srv="http://me.gandi.net"
+ipv4=$(curl -s4 $ip_srv)
+#ipv6=$(curl -s6 $ip_srv)
+ipv4_file="/var/db/dnsup_ipv4"
+#ipv6_file="/var/db/dnsup_ipv6"
+ipv4_regex="\b((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}\
 (25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b"
-ls_ip=$(egrep "$ip_regex" "$ip_file" 2>/dev/null) # last sent IP
+ls_ipv4=$(grep -E "$ipv4_regex" "$ipv4_file" 2>/dev/null) # last sent IP
 provider=$(printf "%s" "${provider}" | tr '[:upper:]' '[:lower:]')
 #-------------------------------------------------------------------------------
 
-if ! printf "%s" "${ip}" | egrep -q "$ip_regex"; then
+if ! printf "%s" "${ipv4}" | grep -Eq "$ipv4_regex"; then
     fatal "Could not determine public IP address."
 fi
 
-if [ "${ip}" != "${ls_ip}" ]; then
+if [ "${ipv4}" != "${ls_ipv4}" ]; then
     case ${provider} in
+        'gandi')
+            gandi && success=true
+            ;;
         'godaddy')
             godaddy && success=true
             ;;
@@ -137,13 +171,13 @@ if [ "${ip}" != "${ls_ip}" ]; then
             fatal "Unregognized provider."
     esac
     if [ -n "$success" ]; then
-        printf "%s" "${ip}" > ${ip_file}
+        printf "%s" "${ipv4}" > ${ipv4_file}
         [ -n "${verbose}" ] && \
-        printf "[%s] Updated A record from ${ls_ip} to ${ip}.\n" "${date}"
+            printf "[%s] Updated A record from ${ls_ipv4} to ${ipv4}.\n" "${date}"
     else
         fatal "${resp}"
     fi
 else
     [ -n "${verbose}" ] && \
-        printf "[%s] External IP address is still ${ls_ip}.\n" "${date}"
+        printf "[%s] External IP address is still ${ls_ipv4}.\n" "${date}"
 fi
