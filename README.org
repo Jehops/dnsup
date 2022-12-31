@@ -8,9 +8,9 @@
    performed using your DNS provider's API.
 
    Gandi's LiveDNS and GoDaddy's managed DNS service are supported.  For now,
-   Only IPv4 addresses can be updated.  I no longer have any domains registered
-   with Godaddy, so it has been years since I tesed with them.  Patches are
-   welcomed.
+   only IPv4 addresses can be updated.  I no longer have any domains registered
+   with Godaddy, so it's been years since I tested with them.  Testers and
+   patches are welcomed.
 #+BEGIN_EXAMPLE
    -h    Print this help message.
    -s    Be silent except upon error.
@@ -18,36 +18,30 @@
 
    The following variables are read from =/usr/local/etc/dnsup.conf=.
 
-   Values required for both Gandi and Godaddy
-
 #+BEGIN_SRC sh
-  provider=<Gandi | GoDaddy>
-  key=<Gandi API key | GoDaddy API key>
-  ttl=<TTL in seconds>
+  provider=    Gandi | GoDaddy
+  key=         <Gandi API key | GoDaddy API key>
+  domain=      <domain to update; defaults to host domain; may be comma-separated list>
+  record=      <DNS record to update; defaults to @>
+  ttl=         <TTL in seconds; defaults to 10800>
 #+END_SRC
 
-   Additional values required when provider is Gandi
+   An additional value required when the provider is Godaddy.
 
 #+BEGIN_SRC sh
-  domain=
-  host=
-  record=
+  secret=       <API key secret>
 #+END_SRC
 
-   Additional value required when provider is Godaddy
-
-#+BEGIN_SRC sh
-  secret=<API key secret>
-#+END_SRC
-
-** API Keys
+** API Documentation
 
    Gandi: https://api.gandi.net/
+   
    GoDaddy: https://developer.godaddy.com
 
 ** COMPATIBILITY
    dnsup is written in POSIX shell.  It requires curl with TLS support and a CA
-   certificate store.
+   certificate store such as the ca_root_nss package on FreeBSD or the
+   ca-certificates package on Debian based distributions and Arch.
 
 ** EXAMPLE
 ~$ cat /etc/crontab~
@@ -64,5 +58,4 @@ SHELL=/bin/sh
    Joseph Mingrone <jrm@ftfl.ca>
 
 ** LICENSE
-   dnsup is released under a BSD 2-Clause License.  Refer to the header of each
-   source file for details.
+   dnsup is released under a BSD 2-Clause License.

@@ -1,7 +1,7 @@
 #!/bin/sh
 
 # ==============================================================================
-# Copyright (c) 2016, Joseph Mingrone.  All rights reserved.
+# Copyright (c) 2022, Joseph Mingrone.  All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
@@ -37,7 +37,7 @@ fatal () {
 }
 # ==============================================================================
 help () {
-    readonly version=0.3.1
+    readonly version=0.4
 
     cat <<EOF
 NAME
@@ -47,42 +47,39 @@ SYNOPSIS
    ${0##*/} [-h|-s]
 
 DESCRIPTION
-Update a host's A record when its external IP address changes.  The update is
-performed using your DNS provider's API.
+   Update a host's A record when its external IP address changes.  The update is
+   performed using your DNS provider's API.
 
-Gandi's LiveDNS and GoDaddy's managed DNS service are supported.  For now, only
-IPv4 addresses can be updated.  I no longer have any domains registered with
-Godaddy, so it has been years since I tesed with them.  Patches are welcomed.
+   Gandi's LiveDNS and GoDaddy's managed DNS service are supported.  For now,
+   only IPv4 addresses can be updated.  I no longer have any domains registered
+   with Godaddy, so it's been years since I tested with them.  Testers and
+   patches are welcomed.
 
    -h   Print this help message.
    -s   Be silent except upon error.
 
    The following variables are read from /usr/local/etc/dnsup.conf
 
-   Values required for both Gandi and Godaddy
+   provider=    Gandi | GoDaddy
+   key=         <Gandi API key | GoDaddy API key>
+   domain=      <domain to update; defaults to host domain;
+                 may be comma-separated list>
+   record=      <DNS record to update; defaults to @>
+   ttl=         <TTL in seconds; defaults to 10800>
 
-   provider=<Gandi | GoDaddy>
-   key=<Gandi API key | GoDaddy API key>
-   ttl=<TTL in second>
+   An additional value is required when the provider is Godaddy.
 
-   Additional values required when provider is Gandi
+   secret=       <API key secret>
 
-   domain=
-   host=
-   record=
-
-   Additional value required when provider is Godaddy
-
-   secret=<API key secret>
-
-   API keys
+   API Documentation
 
    Gandi: https://api.gandi.net/
    GoDaddy: https://developer.godaddy.com
 
 COMPATIBILITY
-   ${0##*/} is written in POSIX shell.  It requires curl with TLS support and a
-   CA certificate store.
+   ${0##*/} is written in POSIX shell.  It requires curl with TLS
+   support and a CA certificate store such as the ca_root_nss package on FreeBSD
+   or the ca-certificates package on Debian based distributions and Arch.
 
 EXAMPLE
    $ cat /etc/crontab
@@ -95,7 +92,7 @@ EXAMPLE
    @reboot                           dnsup  dnsup >> /var/log/dnsup.log 2>&1
 
 AUTHOR
-Joseph Mingrone <jrm@ftfl.ca>
+   Joseph Mingrone <jrm@ftfl.ca>
 
 VERSION
    ${0##*/} version ${version}
@@ -106,17 +103,14 @@ EOF
 # ==============================================================================
 gandi () {
 
-    api='https://dns.api.gandi.net/api/v5/'
-
     resp=$(curl -L -s -XPUT \
-                -d '{"rrset_values": ["'"$ipv4"'"]}' \
+                -d '{"rrset_values": ["'"$ipv4"'"],"rrset_ttl": '"$ttl"'}' \
                 -H "X-Api-Key: $key" \
                 -H "Content-type: application/json" \
-                "${api}domains/$domain/records/$record/A")
+                "${gandi_api}domains/$domain/records/$record/A")
 
     [ "$resp" = '{"message": "DNS Record Created"}' ]
 }
-
 
 godaddy () {
 
@@ -124,8 +118,8 @@ godaddy () {
                 -w '%{http_code}' \
                 -H "Authorization: sso-key ${key}:${secret}" \
                 -H "Content-type: application/json" \
-                -d "[ {\"data\":\"${ip}\",\"ttl\":${ttl}} ]" \
-                "https://api.godaddy.com/v1/domains/${domain}/records/A/${host}")
+                -d "[ {\"data\":\"${ipv4}\",\"ttl\":${ttl}} ]" \
+                "${goddaddy_api}${domain}/records/A/${host}")
 
     [ "$resp" = "200" ]
 }
@@ -140,10 +134,15 @@ fi
 . /usr/local/etc/dnsup.conf
 
 #-------------------------------------------------------------------------------
+gandi_api='https://dns.api.gandi.net/api/v5/'
+goddaddy_api='https://api.godaddy.com/v1/domains/'
 date=$(date)
 fqdn=$(hostname)
-domain=${fqdn#*.}
-host=${fqdn%%.*}
+: "${domain:=${fqdn#*.}}"
+: "${host:=${fqdn%%.*}}"
+: "${record:=@}"
+domain=$(printf "%s" "$domain" | tr -d '[:space:]')
+: "${ttl:=10800}"
 ip_srv="http://me.gandi.net"
 ipv4=$(curl -s4 $ip_srv)
 #ipv6=$(curl -s6 $ip_srv)
@@ -160,23 +159,26 @@ if ! printf "%s" "${ipv4}" | grep -Eq "$ipv4_regex"; then
 fi
 
 if [ "${ipv4}" != "${ls_ipv4}" ]; then
-    case ${provider} in
-        'gandi')
-            gandi && success=true
-            ;;
-        'godaddy')
-            godaddy && success=true
-            ;;
-        *)
-            fatal "Unregognized provider."
-    esac
-    if [ -n "$success" ]; then
-        printf "%s" "${ipv4}" > ${ipv4_file}
-        [ -n "${verbose}" ] && \
-            printf "[%s] Updated A record from ${ls_ipv4} to ${ipv4}.\n" "${date}"
-    else
-        fatal "${resp}"
-    fi
+    for domain in $(printf "%s" "$domain" | tr "," " "); do
+        case ${provider} in
+            'gandi')
+                gandi && success=true
+                ;;
+            'godaddy')
+                godaddy && success=true
+                ;;
+            *)
+                fatal "Unrecognized provider."
+        esac
+        if [ -n "$success" ]; then
+            printf "%s" "${ipv4}" > ${ipv4_file}
+            [ -n "${verbose}" ] && \
+              printf "[%s] Updated A record for $domain from ${ls_ipv4} to \
+${ipv4}.\n" "${date}"
+        else
+            fatal "${resp}"
+        fi
+    done
 else
     [ -n "${verbose}" ] && \
         printf "[%s] External IP address is still ${ls_ipv4}.\n" "${date}"
