@@ -4,44 +4,57 @@
    =$ dnsup [-h|-s]=
 
 ** DESCRIPTION
-   Update a host's A record when its external IP address changes.  The update is
-   performed using your DNS provider's API.
+   Update a host's A record when its external IPv4 address changes.  The update
+   is performed using a DNS provider's API.  Gandi, GoDaddy, and Porkbun are
+   supported.
 
-   Gandi's LiveDNS and GoDaddy's managed DNS service are supported.  For now,
-   only IPv4 addresses can be updated.  I no longer have any domains registered
-   with Godaddy, so it's been years since I tested with them.  Testers and
-   patches are welcomed.
 #+BEGIN_EXAMPLE
    -h    Print this help message.
    -s    Be silent except upon error.
 #+END_EXAMPLE
 
-   The following variables are read from =/usr/local/etc/dnsup.conf=.
+   A configuration file, typically named <domain>.<record>.conf (e.g.,
+   home.example.com.conf), is read from /etc/dnsup/ or /usr/local/etc/dnsup/ for
+   each A record to be updated.
 
+   Configuration values
+
+   Common:
 #+BEGIN_SRC sh
-  provider=    Gandi | GoDaddy
-  key=         <Gandi API key | GoDaddy API key>
-  domain=      <domain to update; defaults to host domain; may be comma-separated list>
-  record=      <DNS record to update; defaults to @>
-  ttl=         <TTL in seconds; defaults to 10800>
+  provider=<Gandi | GoDaddy | Porkbun>
+  domain=<domain name>
+  name=<Use @ or leave blank for zone root, otherwise subdomain without domain>
+  ttl=<TTL in seconds, minimum of 600 for Porkbun>
 #+END_SRC
 
-   An additional value required when the provider is Godaddy.
-
+  Gandi:
 #+BEGIN_SRC sh
-  secret=       <API key secret>
+  pat=<Personal Access Token>>
 #+END_SRC
 
-** API Documentation
+  Godaddy:
+#+BEGIN_SRC sh
+  key=<API key>
+  secret=<API key secret>
+#+END_SRC
+
+  Porkbun:
+#+BEGIN_SRC sh
+  apikey=<API key>
+  secretapikey=<secret API key>
+#+END_SRC
+
+** API Keys
+
+   To learn about the API keys and configuration values specific to each provider, visit these sites.
 
    Gandi: https://api.gandi.net/
-   
    GoDaddy: https://developer.godaddy.com
+   Porkbun: https://porkbun.com/account/api
 
 ** COMPATIBILITY
    dnsup is written in POSIX shell.  It requires curl with TLS support and a CA
-   certificate store such as the ca_root_nss package on FreeBSD or the
-   ca-certificates package on Debian based distributions and Arch.
+   certificate store.
 
 ** EXAMPLE
 ~$ cat /etc/crontab~

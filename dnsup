@@ -1,43 +1,23 @@
 #!/bin/sh
-
-# ==============================================================================
-# Copyright (c) 2022, Joseph Mingrone.  All rights reserved.
 #
-# Redistribution and use in source and binary forms, with or without
-# modification, are permitted provided that the following conditions are met:
+# SPDX-License-Identifier: BSD-2-Clause
 #
-# 1. Redistributions of source code must retain the above copyright notice, this
-# list of conditions and the following disclaimer.
+# Copyright (c) 2016-2025, Joe Mingrone.
 #
-# 2. Redistributions in binary form must reproduce the above copyright notice,
-# this list of conditions and the following disclaimer in the documentation
-# and/or other materials provided with the distribution.
-#
-# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
-# FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
-# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
-# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
-# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
-# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-# ==============================================================================
 
 # dnsup - DNS Updater
 #
 # Run dnsup -h or visit https://github.com/Jehops/dnsup for an overview.
 #
 
-# ==============================================================================
-fatal () {
+fatal ()
+{
     printf "[%s] FATAL: $*\n" "$(date)" > /dev/stderr
     exit 1
 }
-# ==============================================================================
+
 help () {
-    readonly version=0.4
+    readonly version=0.5
 
     cat <<EOF
 NAME
@@ -47,39 +27,46 @@ SYNOPSIS
    ${0##*/} [-h|-s]
 
 DESCRIPTION
-   Update a host's A record when its external IP address changes.  The update is
-   performed using your DNS provider's API.
-
-   Gandi's LiveDNS and GoDaddy's managed DNS service are supported.  For now,
-   only IPv4 addresses can be updated.  I no longer have any domains registered
-   with Godaddy, so it's been years since I tested with them.  Testers and
-   patches are welcomed.
+   Update a host's A record when its external IPv4 address changes.  The update
+   is performed using a DNS provider's API.  Gandi, GoDaddy, and Porkbun are
+   supported.
 
    -h   Print this help message.
    -s   Be silent except upon error.
 
-   The following variables are read from /usr/local/etc/dnsup.conf
+   A configuration file, typically named <domain>.<record>.conf (e.g.,
+   home.example.com.conf), is read from /etc/dnsup/ or /usr/local/etc/dnsup/ for
+   each A record to be updated.
 
-   provider=    Gandi | GoDaddy
-   key=         <Gandi API key | GoDaddy API key>
-   domain=      <domain to update; defaults to host domain;
-                 may be comma-separated list>
-   record=      <DNS record to update; defaults to @>
-   ttl=         <TTL in seconds; defaults to 10800>
+   Configuration values
 
-   An additional value is required when the provider is Godaddy.
+   Common:
+   provider=<Gandi | GoDaddy | Porkbun>
+   domain=<domain name>
+   name=<Use @ or leave blank for zone root, otherwise subdomain without domain>
+   ttl=<TTL in seconds, minimum of 600 for Porkbun>
 
-   secret=       <API key secret>
+   Gandi:
+   pat=<Personal Access Token>
 
-   API Documentation
+   Godaddy:
+   key=<API key>
+   secret=<API key secret>
+
+   Porkbun:
+   apikey=<API key>
+   secretapikey=<secret API key>
+
+   To learn about the API keys and configuration values specific to each
+   provider, visit these sites.
 
    Gandi: https://api.gandi.net/
    GoDaddy: https://developer.godaddy.com
+   Porkbun: https://porkbun.com/account/api
 
 COMPATIBILITY
-   ${0##*/} is written in POSIX shell.  It requires curl with TLS
-   support and a CA certificate store such as the ca_root_nss package on FreeBSD
-   or the ca-certificates package on Debian based distributions and Arch.
+   ${0##*/} is written in POSIX shell.  It requires curl with TLS support and a
+   CA certificate store.
 
 EXAMPLE
    $ cat /etc/crontab
@@ -92,7 +79,7 @@ EXAMPLE
    @reboot                           dnsup  dnsup >> /var/log/dnsup.log 2>&1
 
 AUTHOR
-   Joseph Mingrone <jrm@ftfl.ca>
+Joe Mingrone <jrm@ftfl.ca>
 
 VERSION
    ${0##*/} version ${version}
@@ -100,28 +87,71 @@ VERSION
 EOF
     exit 0
 }
-# ==============================================================================
+
+url_encode() {
+   # Encode all characters except alphanumerics and -._~
+   old_lc_collate=$LC_COLLATE
+   LC_COLLATE=C
+   input=$1
+   encoded=""
+   i=1
+   len=$(printf "%s" "$input" | wc -c)
+   while [ "$i" -le "$len" ]; do
+       c=$(printf "%s" "$input" | cut -c $i)
+       case "$c" in
+           [a-zA-Z0-9.~_-]) encoded="${encoded}${c}" ;;
+           *) encoded="${encoded}$(printf '%%%02X' "'$c")" ;;
+       esac
+       i=$((i + 1))
+   done
+   LC_COLLATE=$old_lc_collate
+   printf "%s" "$encoded"
+}
+
+myip () {
+    host myip.opendns.com resolver1.opendns.com | \
+            awk '/^myip.opendns.com has address / {print $4}'
+}
+
 gandi () {
+    api='https://api.gandi.net/v5/livedns/domains/'
 
-    resp=$(curl -L -s -XPUT \
-                -d '{"rrset_values": ["'"$ipv4"'"],"rrset_ttl": '"$ttl"'}' \
-                -H "X-Api-Key: $key" \
+    resp=$(curl --connect-timeout 10 --max-time 30 -L -s -X PUT \
+                -H "Authorization: Bearer $pat " \
                 -H "Content-type: application/json" \
-                "${gandi_api}domains/$domain/records/$record/A")
+                -d '{"rrset_values": ["'"$ipv4"'"],"rrset_ttl": '"${ttl}"'}' \
+                "${api}/${domain}/records/${name}/A")
 
-    [ "$resp" = '{"message": "DNS Record Created"}' ]
+    [ "$resp" = '{"message":"DNS Record Created"}' ]
 }
 
 godaddy () {
+    api='https://api.godaddy.com/v1/domains/'
 
-    resp=$(curl -L -s -XPUT \
+    resp=$(curl --connect-timeout 10 --max-time 30 -L -s -X PUT \
                 -w '%{http_code}' \
                 -H "Authorization: sso-key ${key}:${secret}" \
                 -H "Content-type: application/json" \
                 -d "[ {\"data\":\"${ipv4}\",\"ttl\":${ttl}} ]" \
-                "${goddaddy_api}${domain}/records/A/${host}")
+                "${api}${domain}/records/A/${name}")
 
     [ "$resp" = "200" ]
+}
+
+porkbun () {
+    enc_domain=$(url_encode "${domain}")
+    enc_name=$(url_encode "${name}")
+    api="https://api.porkbun.com/api/json/v3/dns/editByNameType/${enc_domain}/A/${enc_name}"
+
+    resp=$(curl --connect-timeout 10 --max-time 30 -s -X POST "$api" \
+                -H "Content-Type: application/json" \
+                -d "{
+                     \"apikey\": \"${apikey}\",
+                     \"secretapikey\": \"${secretapikey}\",
+                     \"content\": \"${ipv4}\",
+                     \"ttl\": \"${ttl}\"
+                    }")
+    [ "$resp" = '{"status":"SUCCESS"}' ]
 }
 
 if [ $# -gt 1 ] || { [ $# -eq 1 ] && [ "$1" != '-s' ]; }; then
@@ -129,37 +159,31 @@ if [ $# -gt 1 ] || { [ $# -eq 1 ] && [ "$1" != '-s' ]; }; then
 elif [ $# -eq 0 ]; then
     verbose=1
 fi
-# ==============================================================================
 
-. /usr/local/etc/dnsup.conf
+################################################################################
 
-#-------------------------------------------------------------------------------
-gandi_api='https://dns.api.gandi.net/api/v5/'
-goddaddy_api='https://api.godaddy.com/v1/domains/'
-date=$(date)
-fqdn=$(hostname)
-: "${domain:=${fqdn#*.}}"
-: "${host:=${fqdn%%.*}}"
-: "${record:=@}"
-domain=$(printf "%s" "$domain" | tr -d '[:space:]')
-: "${ttl:=10800}"
-ip_srv="http://me.gandi.net"
-ipv4=$(curl -s4 $ip_srv)
-#ipv6=$(curl -s6 $ip_srv)
-ipv4_file="/var/db/dnsup_ipv4"
-#ipv6_file="/var/db/dnsup_ipv6"
+ipv4=$(myip)
 ipv4_regex="\b((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}\
 (25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b"
-ls_ipv4=$(grep -E "$ipv4_regex" "$ipv4_file" 2>/dev/null) # last sent IP
-provider=$(printf "%s" "${provider}" | tr '[:upper:]' '[:lower:]')
-#-------------------------------------------------------------------------------
 
 if ! printf "%s" "${ipv4}" | grep -Eq "$ipv4_regex"; then
     fatal "Could not determine public IP address."
 fi
 
-if [ "${ipv4}" != "${ls_ipv4}" ]; then
-    for domain in $(printf "%s" "$domain" | tr "," " "); do
+for cfg in /etc/dnsup/*.conf /usr/local/etc/dnsup/*.conf; do
+    unset apikey domain ipv4_file key ls_ipv4 name pat provider secret \
+          secretapikey success ttl
+
+    [ -e "$cfg" ] || continue
+    [ -f "$cfg" ] || continue
+
+    . "${cfg}"
+    name=${name:=@}
+    provider=$(printf "%s" "${provider}" | tr '[:upper:]' '[:lower:]')
+    ipv4_file="/var/db/dnsup/${provider}_${name:+${name}.}${domain}"
+    ls_ipv4=$(grep -E "$ipv4_regex" "$ipv4_file" 2>/dev/null) # last sent IP
+
+    if [ "${ipv4}" != "${ls_ipv4}" ]; then
         case ${provider} in
             'gandi')
                 gandi && success=true
@@ -167,19 +191,21 @@ if [ "${ipv4}" != "${ls_ipv4}" ]; then
             'godaddy')
                 godaddy && success=true
                 ;;
+            'porkbun')
+                porkbun && success=true
+                ;;
             *)
-                fatal "Unrecognized provider."
+                fatal "DNS provider is not supported."
         esac
         if [ -n "$success" ]; then
-            printf "%s" "${ipv4}" > ${ipv4_file}
+            printf "%s" "${ipv4}" > "${ipv4_file}"
             [ -n "${verbose}" ] && \
-              printf "[%s] Updated A record for $domain from ${ls_ipv4} to \
-${ipv4}.\n" "${date}"
+                printf "[%s] ${domain}: Updated A record from ${ls_ipv4:-?} to ${ipv4}.\n" "$(date)"
         else
-            fatal "${resp}"
+            printf "%s\\n" "${resp}"
         fi
-    done
-else
-    [ -n "${verbose}" ] && \
-        printf "[%s] External IP address is still ${ls_ipv4}.\n" "${date}"
-fi
+    else
+        [ -n "${verbose}" ] && \
+            printf "[%s] ${domain}: External IP address is still ${ls_ipv4}.\n" "$(date)"
+    fi
+done
