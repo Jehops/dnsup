@@ -18,7 +18,7 @@ fatal ()
 }
 
 help () {
-    version=0.5.2
+    version=0.5.3
 
     cat <<EOF
 NAME
@@ -91,128 +91,102 @@ EOF
     exit 0
 }
 
-url_encode() {
-    # Encode all characters except alphanumerics and -._~
-    old_lc_collate=$LC_COLLATE
-    LC_COLLATE=C
-    input=$1
-    encoded=""
-    i=1
-    len=$(printf "%s" "$input" | wc -c)
-    while [ "$i" -le "$len" ]; do
-	c=$(printf "%s" "$input" | cut -c $i)
-	case "$c" in
-	    [a-zA-Z0-9.~_-]) encoded="${encoded}${c}" ;;
-            *) encoded="${encoded}$(printf '%%%02X' "'$c")" ;;
-        esac
-        i=$((i + 1))
-    done
-
-    if [ -n "$old_lc_collate" ]; then
-        LC_COLLATE="$old_lc_collate"
-    else
-        LC_COLLATE=C
-    fi
-
-    printf "%s" "$encoded"
+myip () {
+    host myip.opendns.com resolver1.opendns.com | \
+        awk '/^myip.opendns.com has address / {print $4}'
 }
 
- myip () {
-     host myip.opendns.com resolver1.opendns.com | \
-         awk '/^myip.opendns.com has address / {print $4}'
- }
+gandi () {
+    api='https://api.gandi.net/v5/livedns/domains/'
+    name=${name:=@}
 
- gandi () {
-     api='https://api.gandi.net/v5/livedns/domains/'
+    resp=$(curl --connect-timeout 10 --max-time 30 -L -s -X PUT \
+                -H "Authorization: Bearer $pat" \
+                -H "Content-type: application/json" \
+                -d '{"rrset_values": ["'"$ipv4"'"],"rrset_ttl": '"${ttl}"'}' \
+                "${api}${domain}/records/${name}/A")
 
-     resp=$(curl --connect-timeout 10 --max-time 30 -L -s -X PUT \
-                 -H "Authorization: Bearer $pat" \
-                 -H "Content-type: application/json" \
-                 -d '{"rrset_values": ["'"$ipv4"'"],"rrset_ttl": '"${ttl}"'}' \
-                 "${api}${domain}/records/${name}/A")
+    printf "%s" "$resp" | grep -q '"message":"DNS Record'
+}
 
-     printf "%s" "$resp" | grep -q '"message":"DNS Record'
- }
+porkbun () {
+    [ "$name" = "@" ] && unset name
 
- porkbun () {
-     enc_domain=$(url_encode "${domain}")
-     enc_name=$(url_encode "${name}")
-     api="https://api.porkbun.com/api/json/v3/dns/editByNameType/${enc_domain}/A/${enc_name}"
+    api="https://api.porkbun.com/api/json/v3/dns/editByNameType/${domain}/A/${name}"
 
-     resp=$(curl --connect-timeout 10 --max-time 30 -s -X POST "$api" \
-                 -H "Content-Type: application/json" \
-                 -d "{
+    resp=$(curl --connect-timeout 10 --max-time 30 -s -X POST "$api" \
+                -H "Content-Type: application/json" \
+                -d "{
                      \"apikey\": \"${apikey}\",
                      \"secretapikey\": \"${secretapikey}\",
                      \"content\": \"${ipv4}\",
                      \"ttl\": \"${ttl}\"
                     }")
-     [ "$resp" = '{"status":"SUCCESS"}' ]
- }
+    [ "$resp" = '{"status":"SUCCESS"}' ]
+}
 
- ################################################################################
+################################################################################
 
- case "$1" in
-     "" ) verbose=1 ;;
-     -s ) ;;
-     -h|* ) help ;;
- esac
+case "$1" in
+    "" ) verbose=1 ;;
+    -s ) ;;
+    -h|* ) help ;;
+esac
 
- ipv4=$(myip)
- ipv4_regex="^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}\
+ipv4=$(myip)
+ipv4_regex="^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}\
 (25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b"
 
- if ! printf "%s" "${ipv4}" | grep -Eq "$ipv4_regex"; then
-     fatal "Could not determine public IP address."
- fi
+if ! printf "%s" "${ipv4}" | grep -Eq "$ipv4_regex"; then
+    fatal "Could not determine public IP address."
+fi
 
- if ! mkdir -p /var/db/dnsup; then
-     fatal "Failed to create /var/db/dnsup."
- fi
+if ! mkdir -p /var/db/dnsup; then
+    fatal "Failed to create /var/db/dnsup."
+fi
 
- for cfg in /etc/dnsup/*.conf /usr/local/etc/dnsup/*.conf; do
+for cfg in /etc/dnsup/*.conf /usr/local/etc/dnsup/*.conf; do
 
-     unset apikey domain ipv4_file ls_ipv4 name pat prefix provider \
-           secretapikey success ttl
+    unset apikey domain ipv4_file ls_ipv4 name pat prefix provider secretapikey \
+          success ttl
 
-     [ -f "$cfg" ] || continue
-     . "${cfg}"
+    [ -f "$cfg" ] || continue
+    . "${cfg}"
 
-     name=${name:=@}
-     provider=$(printf "%s" "${provider}" | tr '[:upper:]' '[:lower:]')
-     ipv4_file="/var/db/dnsup/${provider}_${name:+${name}.}${domain}"
-     ls_ipv4=$(grep -E "$ipv4_regex" "$ipv4_file" 2>/dev/null) # last sent IP
+    provider=$(printf "%s" "${provider}" | tr '[:upper:]' '[:lower:]')
+    ipv4_file="/var/db/dnsup/${provider}_${name:+${name}.}${domain}"
+    ls_ipv4=$(grep -E "$ipv4_regex" "$ipv4_file" 2>/dev/null) # last sent IP
 
-     if [ "${ipv4}" != "${ls_ipv4}" ]; then
-         case ${provider} in
-             'gandi')
-                 gandi && success=true
-                 ;;
-             'porkbun')
-                 porkbun && success=true
-                 ;;
-             *)
-                 fatal "DNS provider is not supported."
-         esac
-         if [ -n "$success" ]; then
-             tmpfile="${ipv4_file}.tmp"
-             printf "%s" "${ipv4}" > "${tmpfile}" && \
-                 mv -f "${tmpfile}" "${ipv4_file}"
-             if [ -n "$name" ] && [ "$name" != "@" ]; then
-                 prefix="${name}."
-             else
-                 prefix=""
-             fi
-             [ -n "${verbose}" ] && \
-                 printf "[%s] %s%s: Updated A record from %s to %s.\n" \
-                        "$(date)" "${prefix}" "${domain}" \
-                        "${ls_ipv4:-?}" "${ipv4}"
-         else
-             fatal "${domain}: API update failed. Response: ${resp}"
-         fi
-     else
-         [ -n "${verbose}" ] && \
-             printf "[%s] %s: External IP address is still %s.\n" \
-                    "$(date)" "${domain}" "${ls_ipv4}"
-     fi
- done
+    if [ "${ipv4}" != "${ls_ipv4}" ]; then
+        case ${provider} in
+            'gandi')
+                gandi && success=true
+                ;;
+            'porkbun')
+                porkbun && success=true
+                ;;
+            *)
+                fatal "DNS provider is not supported."
+        esac
+        if [ -n "$success" ]; then
+            tmpfile="${ipv4_file}.tmp"
+            printf "%s" "${ipv4}" > "${tmpfile}" && \
+                mv -f "${tmpfile}" "${ipv4_file}"
+            if [ -n "$name" ] && [ "$name" != "@" ]; then
+                prefix="${name}."
+            else
+                prefix=""
+            fi
+            [ -n "${verbose}" ] && \
+                printf "[%s] %s%s: Updated A record from %s to %s.\n" \
+                       "$(date)" "${prefix}" "${domain}" \
+                       "${ls_ipv4:-?}" "${ipv4}"
+        else
+            fatal "${domain}: API update failed. Response: ${resp}"
+        fi
+    else
+        [ -n "${verbose}" ] && \
+            printf "[%s] %s: External IP address is still %s.\n" \
+                   "$(date)" "${domain}" "${ls_ipv4}"
+    fi
+done
