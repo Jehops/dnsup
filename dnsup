@@ -18,7 +18,7 @@ fatal ()
 }
 
 help () {
-    version=0.5.1
+    version=0.5.2
 
     cat <<EOF
 NAME
@@ -172,8 +172,8 @@ url_encode() {
 
  for cfg in /etc/dnsup/*.conf /usr/local/etc/dnsup/*.conf; do
 
-     unset apikey domain ipv4_file ls_ipv4 name pat provider secretapikey \
-           success ttl
+     unset apikey domain ipv4_file ls_ipv4 name pat prefix provider \
+           secretapikey success ttl
 
      [ -f "$cfg" ] || continue
      . "${cfg}"
@@ -196,14 +196,23 @@ url_encode() {
          esac
          if [ -n "$success" ]; then
              tmpfile="${ipv4_file}.tmp"
-             printf "%s" "${ipv4}" > "${tmpfile}" && mv -f "${tmpfile}" "${ipv4_file}"
+             printf "%s" "${ipv4}" > "${tmpfile}" && \
+                 mv -f "${tmpfile}" "${ipv4_file}"
+             if [ -n "$name" ] && [ "$name" != "@" ]; then
+                 prefix="${name}."
+             else
+                 prefix=""
+             fi
              [ -n "${verbose}" ] && \
-                 printf "[%s] %s: Updated A record from %s to %s.\n" "$(date)" "${domain}" "${ls_ipv4:-?}" "${ipv4}"
+                 printf "[%s] %s%s: Updated A record from %s to %s.\n" \
+                        "$(date)" "${prefix}" "${domain}" \
+                        "${ls_ipv4:-?}" "${ipv4}"
          else
              fatal "${domain}: API update failed. Response: ${resp}"
          fi
      else
          [ -n "${verbose}" ] && \
-             printf "[%s] %s: External IP address is still %s.\n" "$(date)" "${domain}" "${ls_ipv4}"
+             printf "[%s] %s: External IP address is still %s.\n" \
+                    "$(date)" "${domain}" "${ls_ipv4}"
      fi
  done

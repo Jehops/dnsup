@@ -52,7 +52,8 @@
    certificate store.
 
 ## EXAMPLE
-```$ cat /usr/local/etc/dnsup/example.com.conf
+```
+$ cat /usr/local/etc/dnsup/example.com.conf
 
 provider=porkbun
 domain=example.com
@@ -61,7 +62,8 @@ secretapikey=sk1_f8b3a0e5c7d19246b0e9d5f7c1a83429e6f0d3b5c7a19284f6e3d5c7a0b1d4e
 ttl=600
 ```
 
-```$ cat /usr/local/etc/cron.d/dnsup
+```
+$ cat /usr/local/etc/cron.d/dnsup
 
 PATH=/etc:/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin
 SHELL=/bin/sh
