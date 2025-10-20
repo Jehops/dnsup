@@ -17,8 +17,13 @@ fatal ()
     exit 1
 }
 
+warn ()
+{
+    printf "[%s] WARN: %s.\n" "$(date)" "$*" >&2
+}
+
 help () {
-    version=0.5.3
+    version=0.5.4
 
     cat <<EOF
 NAME
@@ -35,7 +40,7 @@ DESCRIPTION
    -s   Be silent except upon error.
 
    A configuration file, typically named <domain>.<record>.conf (e.g.,
-   home.example.com.conf), is read from /etc/dnsup/ or /usr/local/etc/dnsup/ for
+   home.example.org.conf), is read from /etc/dnsup/ or /usr/local/etc/dnsup/ for
    each A record to be updated.
 
    Configuration values
@@ -64,10 +69,10 @@ COMPATIBILITY
    CA certificate store.
 
 EXAMPLE
-   $ cat /usr/local/etc/dnsup/example.com.conf
+   $ cat /usr/local/etc/dnsup/example.org.conf
 
    provider=porkbun
-   domain=example.com
+   domain=example.org
    apikey=pk1_5c7a9e0f3b1d4862a9c3e5f0d1b476823a5d9c1f0b4e72638d50f91a2c3b4e7d
    secretapikey=sk1_f8b3a0e5c7d19246b0e9d5f7c1a83429e6f0d3b5c7a19284f6e3d5c7a0b1d4e9
    ttl=600
@@ -182,7 +187,7 @@ for cfg in /etc/dnsup/*.conf /usr/local/etc/dnsup/*.conf; do
                        "$(date)" "${prefix}" "${domain}" \
                        "${ls_ipv4:-?}" "${ipv4}"
         else
-            fatal "${domain}: API update failed. Response: ${resp}"
+            warn "${domain}: API update failed. Response: ${resp}"
         fi
     else
         [ -n "${verbose}" ] && \
